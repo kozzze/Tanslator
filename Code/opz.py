@@ -1,85 +1,63 @@
 import re
 
-# Приоритет операторов
 OPERATOR_PRIORITY = {
     "=": 1,
     "||": 2, "&&": 3,
     "<": 4, "<=": 4, ">": 4, ">=": 4, "==": 4, "!=": 4,
     "+": 5, "-": 5,
     "*": 6, "/": 6, "%": 6,
-    "(": 0, ")": 0, "[": -1, "]": -1  # Учитываем скобки массивов
+    "(": 0, ")": 0, "[": -1, "]": -1
 }
 
-# Функция перевода в ОПЗ (алгоритм Дейкстры)
 def to_opz(expression_tokens):
     output = []
     stack = []
 
     for token in expression_tokens:
-        if token.isalnum():  # Переменная или число
+        if token.isalnum() or "АЭМ" in token:
             output.append(token)
-        elif token in ["(", "["]:  # Открывающая скобка
+        elif token in ["(", "["]:
             stack.append(token)
-        elif token in [")", "]"]:  # Закрывающая скобка
+        elif token in [")", "]"]:
             while stack and stack[-1] not in ["(", "["]:
-                output.append(stack.pop())  # Выталкиваем всё до `(` или `[`
+                output.append(stack.pop())
             if stack and stack[-1] in ["(", "["]:
-                stack.pop()  # Убираем `(` или `[`, не добавляя в ОПЗ
-        elif token in OPERATOR_PRIORITY:  # Оператор
+                stack.pop()
+        elif token in OPERATOR_PRIORITY:
             while stack and stack[-1] not in ["(", "["] and OPERATOR_PRIORITY[stack[-1]] >= OPERATOR_PRIORITY[token]:
                 output.append(stack.pop())
             stack.append(token)
 
-    while stack:  # Выталкиваем остатки из стека
+    while stack:
         output.append(stack.pop())
 
     return output
 
+def process_array_access(expression):
+    tokens = expression.replace("[", " [ ").replace("]", " ] ").split()
+    output = []
+    i = 0
 
-# Функция обработки `if`, учитывая вложенные скобки
+    while i < len(tokens):
+        if i < len(tokens) - 2 and tokens[i + 1] == "[":
+            array_name = tokens[i]
+            index_expr = [tokens[i + 2]]
+            index_opz = to_opz(index_expr)
+            array_access_opz = [array_name] + index_opz + ["1 АЭМ"]
+            output.extend(array_access_opz)  # Добавляем массив как цельный операнд
+            i += 3
+        elif tokens[i] != "]":
+            output.append(tokens[i])
+        i += 1
+
+    return output
+
 def process_if_statement(expression):
-    expression = expression.replace("(", " ( ").replace(")", " ) ")
-    tokens = expression.split()
-    opz_condition = to_opz(tokens)  # Переводим в ОПЗ
-    return " ".join(opz_condition) + " УПЛ"
+    return " ".join(to_opz(expression.split())) + " УПЛ"
 
-
-# Функция обработки `while`
 def process_while_statement(expression):
-    expression = expression.replace("(", " ( ").replace(")", " ) ")
-    tokens = expression.split()
-    opz_condition = to_opz(tokens)  # Переводим в ОПЗ
-    return " ".join(opz_condition) + " УЦ"  # УЦ - Условный Цикл
+    return " ".join(to_opz(expression.split())) + " УЦ"
 
-
-# Функция обработки `for`, чтобы преобразовать в ОПЗ
-def process_for_statement(expression, loop_body):
-    expression = expression.replace("(", " ( ").replace(")", " ) ")
-    tokens = expression.split(";")
-
-    if len(tokens) != 3:
-        return "Ошибка в синтаксисе for"
-
-    init_part = to_opz(tokens[0].split())  # `i = 0`
-    condition_part = to_opz(tokens[1].split())  # `i < 10`
-    increment_part = to_opz(tokens[2].split())  # `i = i + 1`
-
-    result = [
-        " ".join(init_part),  # Инициализация (выполняется один раз)
-        " ".join(condition_part) + " УЦ"  # Проверка условия перед каждой итерацией
-    ]
-
-    # Добавляем тело цикла перед инкрементом
-    result.extend(loop_body)
-
-    # Добавляем инкремент перед возвратом к проверке условия
-    result.append(" ".join(increment_part))
-
-    # Условный переход к проверке условия
-    result.append("УЦ")
-
-    return "\n".join(result)
-# Основная функция обработки кода
 def convert_to_opz_plain(code_lines):
     result = []
     i = 0
@@ -90,48 +68,79 @@ def convert_to_opz_plain(code_lines):
             i += 1
             continue
 
+        # Обрабатываем `if`
         if line.startswith("if"):
             condition = line[line.index("(") + 1: line.rindex(")")]
-            result.append(process_if_statement(condition))
+            tokens = condition.replace("(", " ( ").replace(")", " ) ").split()
+            result.append(" ".join(to_opz(tokens)) + " УПЛ")
             i += 1
             continue
 
+        # Обрабатываем `while`
         if line.startswith("while"):
             condition = line[line.index("(") + 1: line.rindex(")")]
-            result.append(process_while_statement(condition))
+            tokens = condition.replace("(", " ( ").replace(")", " ) ").split()
+            result.append(" ".join(to_opz(tokens)) + " УЦ")
             i += 1
             continue
 
+        # Обрабатываем `for`
         if line.startswith("for"):
             condition = line[line.index("(") + 1: line.rindex(")")]
+            tokens = condition.split(";")
+
+            if len(tokens) != 3:
+                result.append("Ошибка в синтаксисе for")
+                i += 1
+                continue
+
+            init_part = to_opz(tokens[0].split())  # `i = 0`
+            condition_part = to_opz(tokens[1].split())  # `i < 10`
+            increment_part = to_opz(tokens[2].split())  # `i = i + 1`
+
+            result.append(f"{' '.join(init_part)}")
+            result.append(f"{' '.join(condition_part)} УЦ")
+
             loop_body = []
             i += 1
 
-            # Собираем тело цикла
             while i < len(code_lines) and code_lines[i].strip() != "}":
                 loop_body.append(code_lines[i].strip())
                 i += 1
 
-            processed_body = convert_to_opz_plain(loop_body)  # Преобразуем тело цикла
-            result.append(process_for_statement(condition, processed_body))
+            processed_body = convert_to_opz_plain(loop_body)
+            result.extend(processed_body)
+
+            result.append(f"{' '.join(increment_part)}")
+            result.append("УЦ")
+
             i += 1
             continue
 
+        # Обрабатываем присваивание
         if "=" in line:
-            var_name, expr = line.split("=")
+            if line.count("=") > 1 and "==" not in line:
+                var_name, expr = line.split("=", 1)  # Разделяем только по первому `=`
+            else:
+                var_name, expr = line.split("=")
+
             var_name = var_name.strip()
             expr = expr.strip().rstrip(";")
-            expr = expr.replace("(", " ( ").replace(")", " ) ").replace("[", " [ ").replace("]", " ] ")
-            expr_tokens = expr.split()
-            opz_expr = to_opz(expr_tokens)
-            result.append(f"{var_name} {' '.join(opz_expr)} =")
+
+            if "[" in var_name and "]" in var_name:
+                var_name = " ".join(process_array_access(var_name))  # Обрабатываем массив
+
+            expr_tokens = process_array_access(expr)  # Получаем список токенов
+            expr_tokens = to_opz(expr_tokens)  # Пропускаем через ОПЗ
+
+            result.append(f"{var_name} {' '.join(expr_tokens)} =")
             i += 1
             continue
 
+        # Обрабатываем обращение к массиву без присваивания
         if "[" in line and "]" in line:
-            array_access = line.replace("[", " [ ").replace("]", " ] ").split()
-            opz_expr = to_opz(array_access)
-            result.append(" ".join(opz_expr))
+            array_tokens = process_array_access(line)
+            result.append(" ".join(array_tokens))
             i += 1
             continue
 
@@ -139,7 +148,6 @@ def convert_to_opz_plain(code_lines):
 
     return result
 
-# Пример кода
 code_example = [
     "if ((a - b) > 8) {",
     "    while ((a + b) < 20) {",
@@ -151,9 +159,7 @@ code_example = [
     "}"
 ]
 
-# Выполняем обработку кода
 opz_result = convert_to_opz_plain(code_example)
 
-# Вывод результата
 for line in opz_result:
     print(line)
