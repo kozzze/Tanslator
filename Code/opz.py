@@ -1,5 +1,6 @@
 import re
 
+# Приоритет операторов
 OPERATOR_PRIORITY = {
     "=": 1,
     "||": 2, "&&": 3,
@@ -14,6 +15,10 @@ def to_opz(expression_tokens):
     stack = []
 
     for token in expression_tokens:
+        # Если токен — запятая, сохраняем её как есть
+        if token == ",":
+            output.append(token)
+            continue
         if token.isalnum() or "АЭМ" in token:
             output.append(token)
         elif token in ["(", "["]:
@@ -34,20 +39,39 @@ def to_opz(expression_tokens):
     return output
 
 def process_array_access(expression):
+    """
+    Преобразует обращение к массиву в ОПЗ в формате "arr i j k N АЭМ".
+    """
     tokens = expression.replace("[", " [ ").replace("]", " ] ").split()
     output = []
     i = 0
 
     while i < len(tokens):
         if i < len(tokens) - 2 and tokens[i + 1] == "[":
-            array_name = tokens[i]
-            index_expr = [tokens[i + 2]]
-            index_opz = to_opz(index_expr)
-            array_access_opz = [array_name] + index_opz + ["1 АЭМ"]
-            output.extend(array_access_opz)  # Добавляем массив как цельный операнд
-            i += 3
+            array_name = tokens[i]  # Имя массива
+            index_expr = []  # Список аргументов массива
+            current_arg = []  # Буфер для аргументов
+            i += 2  # Переход на первый аргумент внутри []
+
+            while i < len(tokens) and tokens[i] != "]":
+                if tokens[i] == ",":  # Встретили `,`, сохраняем предыдущий аргумент
+                    if current_arg:
+                        index_expr.extend(to_opz(current_arg))  # Добавляем в ОПЗ
+                        current_arg = []  # Очищаем буфер
+                else:
+                    current_arg.append(tokens[i])  # Собираем аргумент
+                i += 1
+
+            # Добавляем последний аргумент (после последней `,`)
+            if current_arg:
+                index_expr.extend(to_opz(current_arg))
+
+            arg_count = len(index_expr)  # Количество аргументов
+            array_access_opz = [array_name] + index_expr + [f"{arg_count} АЭМ"]
+            output.extend(array_access_opz)  # Добавляем в выражение
+
         elif tokens[i] != "]":
-            output.append(tokens[i])
+            output.append(tokens[i])  # Копируем все остальные токены
         i += 1
 
     return output
@@ -58,11 +82,34 @@ def process_if_statement(expression):
 def process_while_statement(expression):
     return " ".join(to_opz(expression.split())) + " УЦ"
 
+def process_for_statement(expression, loop_body):
+    expression = expression.replace("(", " ( ").replace(")", " ) ")
+    tokens = expression.split(";")
+    if len(tokens) != 3:
+        return "Ошибка в синтаксисе for"
+    init_part = to_opz(tokens[0].split())
+    condition_part = to_opz(tokens[1].split())
+    increment_part = to_opz(tokens[2].split())
+    result = [
+        " ".join(init_part),
+        " ".join(condition_part) + " УЦ"
+    ]
+    result.extend(loop_body)
+    result.append(" ".join(increment_part))
+    result.append("УЦ")
+    return "\n".join(result)
+
 def convert_to_opz_plain(code_lines):
     result = []
     i = 0
     while i < len(code_lines):
         line = code_lines[i].strip()
+
+        # Если это директива препроцессора или комментарий, оставляем как есть
+        if line.startswith("#") or line.startswith("//") or line.startswith("using") or line.startswith("int"):
+            result.append(line)
+            i += 1
+            continue
 
         if line in ["{", "}"]:  # Игнорируем фигурные скобки
             i += 1
@@ -145,21 +192,32 @@ def convert_to_opz_plain(code_lines):
             continue
 
         i += 1
-
     return result
 
+# Сохранение вывода в файл
+def save_to_file(filename, lines):
+    with open(filename, 'w') as file:
+        for line in lines:
+            file.write(line + "\n")
+
+# Пример кода для тестирования
 code_example = [
+    "#include <iostream>",
+    "using namespace std;",
+    "int main() {",
     "if ((a - b) > 8) {",
     "    while ((a + b) < 20) {",
     "        x = arr[i] + 3;",
-    "    }",
     "    for (i = 0; i < 10; i = i + 1) {",
     "        y = b[i] * 2;",
     "    }",
-    "}"
+    "}}"
 ]
 
 opz_result = convert_to_opz_plain(code_example)
+save_to_file('output_opz.txt', opz_result)  # Сохраняем результат в файл
 
+# Выводим результат на экран
 for line in opz_result:
     print(line)
+

@@ -1,1 +1,11 @@
-I1 O12 I2 O14 I3
+#include <iostream>
+using namespace std;
+int main()
+a b - 8 > УПЛ
+a b + 20 < УЦ
+x arr i АЭМ 3 + =
+i 0 =
+i 10 < УЦ
+y b i АЭМ 2 * =
+i i 1 + =
+УЦ
