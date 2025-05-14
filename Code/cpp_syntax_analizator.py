@@ -80,9 +80,6 @@ def parse_opz(opz_lines):
 
 # Пример использования
 opz_input = [
-    "#include <iostream>",
-    "using namespace std;",
-    "int main()",
     "a b - 8 > УПЛ",
     "a b + 20 < УЦ",
     "x arr i АЭМ 3 + =",
